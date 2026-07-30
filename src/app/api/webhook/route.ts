@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { sendWhatsAppText } from "@/services/meta";
 
 // GET: Meta webhook verification
 export async function GET(req: NextRequest) {
@@ -22,11 +23,17 @@ export async function POST(req: NextRequest) {
 
     console.log("WEBHOOK RECEIVED:", JSON.stringify(body, null, 2));
 
+    const supabase = await createAdminClient();
+
+    if (body.event === "history") {
+      await handleHistorySync(body, supabase);
+      return NextResponse.json({ status: "ok" });
+    }
+
+
     if (body.object !== "whatsapp_business_account") {
       return NextResponse.json({ status: "ignored" });
     }
-
-    const supabase = await createAdminClient();
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
@@ -43,14 +50,13 @@ export async function POST(req: NextRequest) {
             const text = msg.text?.body ?? msg.caption ?? "[media]";
             const wamid = msg.id;
 
-            // Upsert contact
             const { data: upsertedContact } = await supabase
               .from("contacts")
               .upsert(
                 { phone, name, last_message_at: new Date().toISOString() },
                 { onConflict: "phone" },
               )
-              .select("id")
+              .select("id, bot_enabled") // ← added bot_enabled
               .single();
 
             if (upsertedContact) {
@@ -64,7 +70,6 @@ export async function POST(req: NextRequest) {
                 delivered_at: new Date().toISOString(),
               });
 
-              // Increment message count
               await supabase
                 .from("contacts")
                 .update({
@@ -73,10 +78,30 @@ export async function POST(req: NextRequest) {
                 })
                 .eq("id", upsertedContact.id);
 
-              // Use raw SQL increment
               await supabase.rpc("increment_message_count", {
                 contact_id: upsertedContact.id,
               });
+
+              // ← added: canned bot reply if no human has taken over this contact
+              if (upsertedContact.bot_enabled) {
+                const canned =
+                  "Thanks for reaching out! We've received your message and will get back to you shortly.";
+                const { ok, wamid: botWamid } = await sendWhatsAppText(
+                  phone,
+                  canned,
+                );
+
+                if (ok) {
+                  await supabase.from("messages").insert({
+                    contact_id: upsertedContact.id,
+                    wamid: botWamid,
+                    direction: "outbound",
+                    content: canned,
+                    status: "sent",
+                    sent_at: new Date().toISOString(),
+                  });
+                }
+              }
             }
           }
         }
@@ -214,5 +239,47 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("Webhook error:", err);
     return NextResponse.json({ status: "error" }, { status: 200 });
+  }
+}
+
+
+
+
+// ↓↓↓ ADD THIS NEW FUNCTION HERE, AT THE END OF THE FILE ↓↓↓
+async function handleHistorySync(
+  body: { data: { history: any[] } },
+  supabase: Awaited<ReturnType<typeof createAdminClient>>
+) {
+  for (const phase of body.data.history ?? []) {
+    console.log("HISTORY PHASE:", phase.metadata?.phase, "chunk:", phase.metadata?.chunk_order);
+
+    for (const thread of phase.threads ?? []) {
+      const customerPhone = `+${thread.id}`;
+
+      const { data: contact } = await supabase
+        .from("contacts")
+        .upsert({ phone: customerPhone }, { onConflict: "phone" })
+        .select("id")
+        .single();
+
+      if (!contact) continue;
+
+      for (const msg of thread.messages ?? []) {
+        const isFromBusiness = Boolean(msg.to);
+        const text = msg.text?.body ?? msg[msg.type]?.body ?? "[media]";
+
+        await supabase.from("messages").upsert(
+          {
+            contact_id: contact.id,
+            wamid: msg.id,
+            direction: isFromBusiness ? "outbound" : "inbound",
+            content: text,
+            status: "delivered",
+            sent_at: new Date(parseInt(msg.timestamp) * 1000).toISOString(),
+          },
+          { onConflict: "wamid" }
+        );
+      }
+    }
   }
 }
