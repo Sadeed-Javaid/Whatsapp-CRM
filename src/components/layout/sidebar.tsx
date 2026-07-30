@@ -22,6 +22,7 @@ const navItems = [
   { href: "/dashboard/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/dashboard/contacts", label: "Contacts", icon: Users },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings }, // ← added
 ];
 
 interface SidebarProps {

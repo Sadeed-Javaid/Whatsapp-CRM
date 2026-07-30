@@ -17,8 +17,6 @@ export default function WhatsAppConnectButton() {
   const [sdkReady, setSdkReady] = useState(false);
   const [status, setStatus] = useState<"idle" | "connecting" | "syncing" | "done" | "error">("idle");
 
-  // Holds signup data captured from the postMessage event,
-  // until FB.login's callback fires with the code
   const signupData = useRef<{ wabaId?: string; phoneNumberId?: string }>({});
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export default function WhatsAppConnectButton() {
       if (data.type !== "WA_EMBEDDED_SIGNUP") return;
 
       if (data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
-        // Capture IDs here — this is the most reliable source for them
         signupData.current = {
           wabaId: data.data?.waba_id,
           phoneNumberId: data.data?.phone_number_id,
@@ -125,3 +122,11 @@ export default function WhatsAppConnectButton() {
         {status === "connecting" && "Connecting..."}
         {status === "syncing" && "Syncing your WhatsApp..."}
         {status === "done" && "Connected ✓"}
+        {(status === "idle" || status === "error") && "Connect your WhatsApp number"}
+      </button>
+      {status === "error" && (
+        <p className="text-sm text-red-500">Something went wrong. Please try again.</p>
+      )}
+    </div>
+  );
+}
