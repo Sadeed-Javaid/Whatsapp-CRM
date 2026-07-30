@@ -1,14 +1,34 @@
-const META_API = "https://graph.facebook.com/v19.0";
+import { createAdminClient } from "@/lib/supabase/server";
+
+const META_API = `https://graph.facebook.com/${process.env.NEXT_PUBLIC_GRAPH_API_VERSION || "v25.0"}`;
+
+async function getActiveConnection() {
+  const supabase = await createAdminClient();
+
+  const { data, error } = await supabase
+    .from("whatsapp_connection")
+    .select("phone_number_id, access_token")
+    .eq("status", "connected")
+    .single();
+
+  if (error || !data) {
+    throw new Error("No active WhatsApp connection found");
+  }
+
+  return data;
+}
 
 export async function sendWhatsAppTemplate(
   phone: string,
   templateName: string,
   templateLanguage: string
 ) {
-  const res = await fetch(`${META_API}/${process.env.META_PHONE_NUMBER_ID}/messages`, {
+  const { phone_number_id, access_token } = await getActiveConnection();
+
+  const res = await fetch(`${META_API}/${phone_number_id}/messages`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${access_token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -31,10 +51,12 @@ export async function sendWhatsAppTemplate(
 }
 
 export async function sendWhatsAppText(phone: string, message: string) {
-  const res = await fetch(`${META_API}/${process.env.META_PHONE_NUMBER_ID}/messages`, {
+  const { phone_number_id, access_token } = await getActiveConnection();
+
+  const res = await fetch(`${META_API}/${phone_number_id}/messages`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${access_token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

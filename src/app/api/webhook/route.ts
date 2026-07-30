@@ -36,7 +36,9 @@ export async function POST(req: NextRequest) {
         if (value.messages) {
           for (const msg of value.messages) {
             const phone = `+${msg.from}`;
-            const contact = value.contacts?.find((c: { wa_id: string }) => c.wa_id === msg.from);
+            const contact = value.contacts?.find(
+              (c: { wa_id: string }) => c.wa_id === msg.from,
+            );
             const name = contact?.profile?.name ?? null;
             const text = msg.text?.body ?? msg.caption ?? "[media]";
             const wamid = msg.id;
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
               .from("contacts")
               .upsert(
                 { phone, name, last_message_at: new Date().toISOString() },
-                { onConflict: "phone" }
+                { onConflict: "phone" },
               )
               .select("id")
               .single();
@@ -72,7 +74,9 @@ export async function POST(req: NextRequest) {
                 .eq("id", upsertedContact.id);
 
               // Use raw SQL increment
-              await supabase.rpc("increment_message_count", { contact_id: upsertedContact.id });
+              await supabase.rpc("increment_message_count", {
+                contact_id: upsertedContact.id,
+              });
             }
           }
         }
@@ -130,6 +134,78 @@ export async function POST(req: NextRequest) {
               }
             }
           }
+        }
+
+        // Handle messages sent from the client's phone (WhatsApp Business app)
+        if (value.message_echoes) {
+          for (const echo of value.message_echoes) {
+            const phone = `+${echo.to}`;
+            const text = echo.text?.body ?? "[media]";
+            const wamid = echo.id;
+
+            const { data: upsertedContact } = await supabase
+              .from("contacts")
+              .upsert(
+                {
+                  phone,
+                  last_message_at: new Date().toISOString(),
+                  bot_enabled: false,
+                }, // ← added
+                { onConflict: "phone" },
+              )
+              .select("id")
+              .single();
+
+            if (upsertedContact) {
+              await supabase.from("messages").insert({
+                contact_id: upsertedContact.id,
+                wamid,
+                direction: "outbound",
+                content: text,
+                status: "sent",
+                sent_at: new Date(
+                  parseInt(echo.timestamp) * 1000,
+                ).toISOString(),
+              });
+
+              await supabase
+                .from("contacts")
+                .update({ last_message_at: new Date().toISOString() })
+                .eq("id", upsertedContact.id);
+            }
+          }
+        }
+
+        // Handle contact sync from the WhatsApp Business app
+        if (value.state_sync) {
+          for (const entry of value.state_sync) {
+            if (entry.type !== "contact") continue;
+
+            const phone = `+${entry.contact.phone_number}`;
+            const name =
+              entry.contact.full_name ?? entry.contact.first_name ?? null;
+
+            if (entry.action === "add") {
+              await supabase
+                .from("contacts")
+                .upsert({ phone, name }, { onConflict: "phone" });
+            } else if (entry.action === "remove") {
+              // Judgment call — see note below
+            }
+          }
+        }
+
+        // Handle account-level events (onboarding status, restrictions, etc.)
+        if (value.event) {
+          console.log(
+            "ACCOUNT_UPDATE EVENT:",
+            value.event,
+            JSON.stringify(value, null, 2),
+          );
+          // Once we see real event names from Meta in production, we can branch
+          // here to update whatsapp_connection.status (e.g. mark 'restricted' or
+          // 'banned') so the CRM UI can warn the client instead of silently
+          // failing to send messages.
         }
       }
     }

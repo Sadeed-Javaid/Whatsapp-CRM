@@ -7,7 +7,10 @@ export async function POST(req: NextRequest) {
     const { contact_id, phone, message } = await req.json();
 
     if (!contact_id || !phone || !message) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 },
+      );
     }
 
     const supabase = await createAdminClient();
@@ -35,15 +38,19 @@ export async function POST(req: NextRequest) {
 
     await supabase
       .from("contacts")
-      .update({ last_message_at: new Date().toISOString() })
+      .update({ last_message_at: new Date().toISOString(), bot_enabled: false }) // ← added
       .eq("id", contact_id);
 
-    return NextResponse.json({ success: true, message_id: savedMessage.id, wamid });
+    return NextResponse.json({
+      success: true,
+      message_id: savedMessage.id,
+      wamid,
+    });
   } catch (err) {
     console.error("Message send error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -54,7 +61,10 @@ export async function GET(req: NextRequest) {
     const contactId = searchParams.get("contact_id");
 
     if (!contactId) {
-      return NextResponse.json({ error: "contact_id required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "contact_id required" },
+        { status: 400 },
+      );
     }
 
     const supabase = await createAdminClient();
@@ -67,6 +77,9 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json(data);
   } catch {
-    return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch messages" },
+      { status: 500 },
+    );
   }
 }
