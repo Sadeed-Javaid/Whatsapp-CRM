@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
         contact_id,
         direction: "outbound",
         content: message,
+        source: "agent",
         wamid,
         status: "sent",
         sent_at: new Date().toISOString(),

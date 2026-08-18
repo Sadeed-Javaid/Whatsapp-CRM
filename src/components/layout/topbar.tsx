@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Moon, Sun, LogOut, Bell } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -24,6 +25,11 @@ export function Topbar({ user }: TopbarProps) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const supabase = createClient();
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const title = pageTitles[pathname] ?? "Dashboard";
 
@@ -51,7 +57,11 @@ export function Topbar({ user }: TopbarProps) {
           className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
           title="Toggle theme"
         >
-          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {mounted ? (
+            theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />
+          ) : (
+            <div className="w-4 h-4" />
+          )}
         </button>
 
         <button

@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "ok" });
     }
 
-
     if (body.object !== "whatsapp_business_account") {
       return NextResponse.json({ status: "ignored" });
     }
@@ -65,6 +64,7 @@ export async function POST(req: NextRequest) {
                 wamid,
                 direction: "inbound",
                 content: text,
+                source: "customer",
                 status: "delivered",
                 sent_at: new Date(parseInt(msg.timestamp) * 1000).toISOString(),
                 delivered_at: new Date().toISOString(),
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
               await supabase
                 .from("contacts")
                 .update({
-                  message_count: supabase.rpc ? undefined : undefined,
+                  // message_count: supabase.rpc ? undefined : undefined,
                   last_message_at: new Date().toISOString(),
                 })
                 .eq("id", upsertedContact.id);
@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
                     wamid: botWamid,
                     direction: "outbound",
                     content: canned,
+                    source: "bot",
                     status: "sent",
                     sent_at: new Date().toISOString(),
                   });
@@ -187,6 +188,7 @@ export async function POST(req: NextRequest) {
                 wamid,
                 direction: "outbound",
                 content: text,
+                source: "phone_app",
                 status: "sent",
                 sent_at: new Date(
                   parseInt(echo.timestamp) * 1000,
@@ -242,16 +244,18 @@ export async function POST(req: NextRequest) {
   }
 }
 
-
-
-
 // ↓↓↓ ADD THIS NEW FUNCTION HERE, AT THE END OF THE FILE ↓↓↓
 async function handleHistorySync(
   body: { data: { history: any[] } },
-  supabase: Awaited<ReturnType<typeof createAdminClient>>
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
 ) {
   for (const phase of body.data.history ?? []) {
-    console.log("HISTORY PHASE:", phase.metadata?.phase, "chunk:", phase.metadata?.chunk_order);
+    console.log(
+      "HISTORY PHASE:",
+      phase.metadata?.phase,
+      "chunk:",
+      phase.metadata?.chunk_order,
+    );
 
     for (const thread of phase.threads ?? []) {
       const customerPhone = `+${thread.id}`;
@@ -277,7 +281,7 @@ async function handleHistorySync(
             status: "delivered",
             sent_at: new Date(parseInt(msg.timestamp) * 1000).toISOString(),
           },
-          { onConflict: "wamid" }
+          { onConflict: "wamid" },
         );
       }
     }
