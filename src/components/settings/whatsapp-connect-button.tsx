@@ -16,8 +16,22 @@ const GRAPH_VERSION = process.env.NEXT_PUBLIC_GRAPH_API_VERSION || "v25.0";
 export default function WhatsAppConnectButton() {
   const [sdkReady, setSdkReady] = useState(false);
   const [status, setStatus] = useState<"idle" | "connecting" | "syncing" | "done" | "error">("idle");
+  const [connected, setConnected] = useState(false); // ← NEW: tracks existing connection
+  const [checkingConnection, setCheckingConnection] = useState(true); // ← NEW
+  const [disconnecting, setDisconnecting] = useState(false); // ← NEW
 
   const signupData = useRef<{ wabaId?: string; phoneNumberId?: string }>({});
+
+  // ← NEW: check current connection status on page load
+  useEffect(() => {
+    fetch("/api/whatsapp/connection-status")
+      .then((r) => r.json())
+      .then((res) => {
+        setConnected(!!res.connected);
+      })
+      .catch(() => setConnected(false))
+      .finally(() => setCheckingConnection(false));
+  }, []);
 
   useEffect(() => {
     if (document.getElementById("fb-jssdk")) {
@@ -91,8 +105,12 @@ export default function WhatsAppConnectButton() {
           })
             .then((r) => r.json())
             .then((res) => {
-              if (res.success) setStatus("done");
-              else setStatus("error");
+              if (res.success) {
+                setStatus("done");
+                setConnected(true); // ← NEW
+              } else {
+                setStatus("error");
+              }
             })
             .catch(() => setStatus("error"));
         } else {
@@ -111,6 +129,53 @@ export default function WhatsAppConnectButton() {
       }
     );
   }, []);
+
+  // ← NEW: disconnect handler
+  const handleDisconnect = useCallback(async () => {
+    const confirmed = confirm(
+      "Are you sure you want to disconnect WhatsApp? The client's phone app will keep working, but the CRM will stop sending/receiving messages until reconnected."
+    );
+    if (!confirmed) return;
+
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
+      const data = await res.json();
+
+      if (data.success) {
+        alert("WhatsApp disconnected successfully.");
+        setConnected(false);
+        setStatus("idle");
+      } else {
+        alert("Failed to disconnect: " + data.error);
+      }
+    } catch {
+      alert("Failed to disconnect. Please try again.");
+    } finally {
+      setDisconnecting(false);
+    }
+  }, []);
+
+  // ← NEW: show a loading state while checking connection
+  if (checkingConnection) {
+    return <p className="text-sm text-gray-500">Checking connection status...</p>;
+  }
+
+  // ← NEW: if already connected, show status + disconnect button instead of connect button
+  if (connected && status !== "connecting" && status !== "syncing") {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-green-600 font-medium">✓ WhatsApp is connected</p>
+        <button
+          onClick={handleDisconnect}
+          disabled={disconnecting}
+          className="rounded-md bg-red-600 px-4 py-2 text-white disabled:opacity-50 w-fit"
+        >
+          {disconnecting ? "Disconnecting..." : "Disconnect WhatsApp"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
