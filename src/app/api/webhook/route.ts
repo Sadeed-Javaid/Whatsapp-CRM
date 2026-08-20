@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
               // ← added: canned bot reply if no human has taken over this contact
               if (upsertedContact.bot_enabled) {
                 const canned =
-                  "Thanks for reaching out! We've received your message and will get back to you shortly.\n*_ZIEL GLOBAL_*";
+                  "Thanks for reaching out! We've received your message and will get back to you shortly.";
                 const { ok, wamid: botWamid } = await sendWhatsAppText(
                   phone,
                   canned,
